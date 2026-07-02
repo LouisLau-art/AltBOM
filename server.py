@@ -1,7 +1,9 @@
 import json
 import math
 import re
-import subprocess
+import os
+import urllib.request
+import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # 1. 本多元器件特征向量数据库 (存储了各个芯片的语义描述和精准硬件关键字)
@@ -118,36 +120,92 @@ def search_hybrid(query_text, query_features):
     results.sort(key=lambda x: x["score"], reverse=True)
     return results
 
-# 4. 大模型 Agent 联网获取实时元器件价格与库存
-def get_realtime_price_and_stock(model_name, default_price, default_stock):
+# 4. 自动检测本地火山方舟 API 密钥及 Endpoint 凭证 (Safe from leak)
+def get_local_ark_credentials():
+    # 优先读取系统环境变量
+    api_key = os.environ.get("ARK_API_KEY")
+    endpoint = os.environ.get("ARK_ENDPOINT_ID")
+    if api_key:
+        return api_key, endpoint
+
+    # 尝试从本地 ~/.arkcli/profile.yaml 配置文件中通过正则抓取，避免引入额外的 yaml 解析依赖
     try:
-        # 利用本地已授权的 arkcli 联网搜索（Web Search Tool）去爬取主流电子商城并获取实时报价
-        prompt = f"查询元器件 {model_name} 当前在立创商城（或主流电子商城）的实时现货单价与库存状态。请仅返回一个标准的 JSON 对象，不要包含 markdown 标记或任何其他文本，格式为：{{\"price\": 18.5, \"stock\": \"充足\"}}。若在网上查不到，请根据你的常识合理估算一个该元器件当下的现货单价。"
-        cmd = [
-            "arkcli", "+chat",
-            "--tools", "web_search",
-            "--tool-choice", "auto",
-            "--text-format", "json_object",
-            prompt
-        ]
-        # 执行命令，限时 12 秒，防止黑客松台上网络超时卡死
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
-        if result.returncode == 0:
-            output = result.stdout.strip()
-            # 兼容处理某些模型可能忍不住包上 ```json ... ``` 的情况
-            match = re.search(r'\{.*\}', output, re.DOTALL)
-            if match:
-                output = match.group(0)
-            data = json.loads(output)
-            price = float(data.get("price", default_price))
-            stock = str(data.get("stock", default_stock))
-            print(f"📡 [REAL-TIME SEARCH] 成功通过大模型联网获取 {model_name} 实时价格: ¥{price}, 库存: {stock}")
-            return price, stock
+        config_path = os.path.expanduser("~/.arkcli/profile.yaml")
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            # 正则匹配
+            key_match = re.search(r'api_key:\s*["\']?([^"\']\S+)["\']?', content)
+            ep_match = re.search(r'default_model:\s*["\']?([^"\']\S+)["\']?', content)
+            
+            key = key_match.group(1) if key_match else None
+            ep = ep_match.group(1) if ep_match else None
+            if key:
+                return key, ep
+    except Exception:
+        pass
+    return None, None
+
+# 5. 标准 HTTP 协议调用大模型进行 Web Search 联网比价
+def get_realtime_price_and_stock(model_name, default_price, default_stock):
+    api_key, endpoint = get_local_ark_credentials()
+    if not api_key:
+        # 如果未检测到 API 密钥，瞬间返回默认数据（用于队友或评委机器上的无感降级体验）
+        return default_price, default_stock
+
+    try:
+        # 火山引擎方舟平台大模型统一入口
+        url = "https://api.ark.cn-beijing.volces.com/api/v3/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        # 默认使用本地配置的 model/endpoint，若不存在则使用公共模型 ID
+        model_id = endpoint if endpoint else "doubao-pro-4k"
+        
+        prompt = f"查询元器件 {model_name} 当前在立创商城（或国内电子商城）的真实实时单价与现货状态。请仅返回一个标准的 JSON 对象，不要包含 markdown 标记或任何其他文本，格式为：{{\"price\": 18.5, \"stock\": \"充足\"}}。若在网上查不到，请根据你的知识合理估算一个该元器件当下的零售价格并返回。"
+        
+        body = {
+            "model": model_id,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            # 开启大模型联网搜索功能 (Web Search Tool)
+            "tools": [{"type": "web_search"}],
+            "tool_choice": "auto"
+        }
+        
+        # 发送标准 HTTP POST 请求
+        req = urllib.request.Request(
+            url, 
+            data=json.dumps(body).encode('utf-8'), 
+            headers=headers, 
+            method="POST"
+        )
+        
+        # 8 秒超时保护，防止路演网络太卡导致页面等待
+        with urllib.request.urlopen(req, timeout=8) as response:
+            res_data = json.loads(response.read().decode('utf-8'))
+            output = ""
+            if "choices" in res_data and len(res_data["choices"]) > 0:
+                output = res_data["choices"][0]["message"]["content"].strip()
+            
+            if output:
+                # 兼容处理大模型返回时带上的 ```json ... ``` 标记
+                match = re.search(r'\{.*\}', output, re.DOTALL)
+                if match:
+                    output = match.group(0)
+                data = json.loads(output)
+                price = float(data.get("price", default_price))
+                stock = str(data.get("stock", default_stock))
+                print(f"📡 [REAL-TIME HTTP] 大模型联网比价成功 {model_name}: ¥{price}, 库存: {stock}")
+                return price, stock
     except Exception as e:
-        print(f"⚠️ [REAL-TIME SEARCH] 联网比价超时或失败，自动降级为本地默认数据：{e}")
+        print(f"⚠️ [REAL-TIME HTTP] 大模型联网查询超时或失败，已自动使用本地数据：{e}")
     return default_price, default_stock
 
-# 5. HTTP API 服务，支持 CORS 跨域请求
+# 6. HTTP API 服务，支持 CORS 跨域请求
 class HybridSearchHandler(BaseHTTPRequestHandler):
     def _set_headers(self):
         self.send_response(200)
