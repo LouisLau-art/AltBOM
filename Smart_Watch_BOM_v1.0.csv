@@ -1,0 +1,6 @@
+位号(Designator),器件型号(Part Number),描述(Description),封装(Package),数量(Quantity)
+U1,STM32F103C8T6,ARM Cortex-M3 MCU 64KB Flash 72MHz,LQFP-48,1
+U2,AMS1117-3.3,LDO Voltage Regulator 3.3V 1A,SOT-223,1
+BT1,HC-05,Bluetooth Serial Pass-through Module,SMD-6,1
+R1,10K,Resistor 10k Ohm 1/10W 5%,0603,5
+C1,10uF,Ceramic Capacitor 10uF 16V,0603,2
