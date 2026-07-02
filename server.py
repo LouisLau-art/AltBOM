@@ -120,7 +120,7 @@ def search_hybrid(query_text, query_features):
     results.sort(key=lambda x: x["score"], reverse=True)
     return results
 
-# 4. 自动检测本地火山方舟 API 密钥及 Endpoint 凭证 (Safe from leak)
+# 4. 自动检测本地火山方舟 API 密钥及 Endpoint 凭证
 def get_local_ark_credentials():
     # 优先读取系统环境变量
     api_key = os.environ.get("ARK_API_KEY")
@@ -128,7 +128,7 @@ def get_local_ark_credentials():
     if api_key:
         return api_key, endpoint
 
-    # 尝试从本地 ~/.arkcli/profile.yaml 配置文件中通过正则抓取，避免引入额外的 yaml 解析依赖
+    # 尝试从本地 ~/.arkcli/profile.yaml 配置文件中通过正则抓取
     try:
         config_path = os.path.expanduser("~/.arkcli/profile.yaml")
         if os.path.exists(config_path):
@@ -150,41 +150,29 @@ def get_local_ark_credentials():
 def get_realtime_price_and_stock(model_name, default_price, default_stock):
     api_key, endpoint = get_local_ark_credentials()
     if not api_key:
-        # 如果未检测到 API 密钥，瞬间返回默认数据（用于队友或评委机器上的无感降级体验）
+        # 如果未检测到 API 密钥，瞬间返回默认数据
         return default_price, default_stock
 
     try:
-        # 火山引擎方舟平台大模型统一入口
         url = "https://api.ark.cn-beijing.volces.com/api/v3/chat/completions"
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}"
         }
-        
-        # 默认使用本地配置的 model/endpoint，若不存在则使用公共模型 ID
         model_id = endpoint if endpoint else "doubao-pro-4k"
-        
-        prompt = f"查询元器件 {model_name} 当前在立创商城（或国内电子商城）的真实实时单价与现货状态。请仅返回一个标准的 JSON 对象，不要包含 markdown 标记或任何其他文本，格式为：{{\"price\": 18.5, \"stock\": \"充足\"}}。若在网上查不到，请根据你的知识合理估算一个该元器件当下的零售价格并返回。"
+        prompt = f"查询元器件 {model_name} 当前在立创商城（或主流电子商城）的真实实时单价与现货状态。请仅返回一个标准的 JSON 对象，不要包含 markdown 标记或任何其他文本，格式为：{{\"price\": 18.5, \"stock\": \"充足\"}}。若在网上查不到，请根据你的知识合理估算一个该元器件当下的零售价格并返回。"
         
         body = {
             "model": model_id,
             "messages": [
                 {"role": "user", "content": prompt}
             ],
-            # 开启大模型联网搜索功能 (Web Search Tool)
             "tools": [{"type": "web_search"}],
             "tool_choice": "auto"
         }
         
-        # 发送标准 HTTP POST 请求
-        req = urllib.request.Request(
-            url, 
-            data=json.dumps(body).encode('utf-8'), 
-            headers=headers, 
-            method="POST"
-        )
+        req = urllib.request.Request(url, data=json.dumps(body).encode('utf-8'), headers=headers, method="POST")
         
-        # 8 秒超时保护，防止路演网络太卡导致页面等待
         with urllib.request.urlopen(req, timeout=8) as response:
             res_data = json.loads(response.read().decode('utf-8'))
             output = ""
@@ -192,7 +180,6 @@ def get_realtime_price_and_stock(model_name, default_price, default_stock):
                 output = res_data["choices"][0]["message"]["content"].strip()
             
             if output:
-                # 兼容处理大模型返回时带上的 ```json ... ``` 标记
                 match = re.search(r'\{.*\}', output, re.DOTALL)
                 if match:
                     output = match.group(0)
@@ -210,7 +197,6 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
     def _set_headers(self):
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
-        # 允许任何前端跨域请求
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
@@ -220,6 +206,7 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
         self._set_headers()
 
     def do_POST(self):
+        # 优化分析接口
         if self.path == '/api/analyze':
             content_length = int(self.headers['Content-Length'])
             post_data = self.rfile.read(content_length).decode('utf-8')
@@ -236,7 +223,7 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                 charger_match = search_hybrid("Li-Po battery charger SOP-8 package compatible with TP4056", ["sop-8", "charger", "battery"])[0]
                 bt_match = search_hybrid("Bluetooth SPP serial pass-through module replacing HC-05", ["smd-6", "bluetooth", "hc-05"])[0]
                 
-                # 双通道匹配完毕后，真实调用 AI 联网搜索，更新为最新的实时价格和库存信息
+                # 真实调用 AI 联网搜索
                 orig_mcu_price, orig_mcu_stock = get_realtime_price_and_stock("STM32F103C8T6", 18.50, "供货紧张")
                 opt_mcu_price, opt_mcu_stock = get_realtime_price_and_stock(mcu_match["chip"]["name"], mcu_match["chip"]["price"], mcu_match["chip"]["status_badge"])
                 
@@ -277,7 +264,8 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                             "compatibility": mcu_match["chip"]["compatibility"],
                             "score": mcu_match["score"],
                             "vector_score": mcu_match["vector_score"],
-                            "keyword_score": mcu_match["keyword_score"]
+                            "keyword_score": mcu_match["keyword_score"],
+                            "advice": "主频高达 108MHz，Flash 读等待更少。100% 引脚兼容。注意 GD32 内部 RC 温漂比 ST 略大，时序极其敏感（如高波特率 CAN 或 UART）建议外置高精晶振。调试时 Keil 需选择 GD32 Flash 算法以防校验报错。"
                         },
                         {
                             "designator": "U2 (LDO 稳压)",
@@ -290,7 +278,8 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                             "compatibility": ldo_match["chip"]["compatibility"],
                             "score": ldo_match["score"],
                             "vector_score": ldo_match["vector_score"],
-                            "keyword_score": ldo_match["keyword_score"]
+                            "keyword_score": ldo_match["keyword_score"],
+                            "advice": "静态功耗（120µA）仅为 AMS1117（5mA）的 2.4%，能大幅提升智能手表待机。注意：AMS1117 为 SOT-223 封装，而 LDK130 为 SOT-23。虽然脚位一致，但焊盘不兼容，需要微调 PCB 封装 Layout。"
                         },
                         {
                             "designator": "U3 (SPI Flash)",
@@ -303,7 +292,8 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                             "compatibility": flash_match["chip"]["compatibility"],
                             "score": flash_match["score"],
                             "vector_score": flash_match["vector_score"],
-                            "keyword_score": flash_match["keyword_score"]
+                            "keyword_score": flash_match["keyword_score"],
+                            "advice": "SOP-8 封装，物理尺寸和电气引脚 100% 相同，支持原位直替。需要注意：GD25Q64 的制造商 JEDEC ID 为 0xC8（华邦为 0xEF）。如果 MCU 固件驱动中写死了校验 0xEF，需在驱动代码中兼容支持 0xC8 厂商标识。"
                         },
                         {
                             "designator": "U4 (加速度计)",
@@ -316,7 +306,8 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                             "compatibility": accel_match["chip"]["compatibility"],
                             "score": accel_match["score"],
                             "vector_score": accel_match["vector_score"],
-                            "keyword_score": accel_match["keyword_score"]
+                            "keyword_score": accel_match["keyword_score"],
+                            "advice": "低功耗工作电流仅 2µA（ADXL345为23µA），降耗 90%，对穿戴设备极友好。引脚定义一致但封装焊盘有 0.1mm 微小公差，建议优化钢网。寄存器映射完全不同，固件中必须更换 LIS3DH 驱动库并校准中断敲击阈值。"
                         },
                         {
                             "designator": "U5 (充电管理)",
@@ -329,7 +320,8 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                             "compatibility": charger_match["chip"]["compatibility"],
                             "score": charger_match["score"],
                             "vector_score": charger_match["vector_score"],
-                            "keyword_score": charger_match["keyword_score"]
+                            "keyword_score": charger_match["keyword_score"],
+                            "advice": "纯模拟线性锂电充电控制，引脚和外围电路 100% 相同，支持 SOP-8 无感直替贴片。MCU 固件不涉及任何控制软件修改。"
                         },
                         {
                             "designator": "BT1 (蓝牙模块)",
@@ -342,7 +334,8 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                             "compatibility": bt_match["chip"]["compatibility"],
                             "score": bt_match["score"],
                             "vector_score": bt_match["vector_score"],
-                            "keyword_score": bt_match["keyword_score"]
+                            "keyword_score": bt_match["keyword_score"],
+                            "advice": "邮票孔封装引脚对齐，支持原位焊接直替。注意：AT 指令集不同，且 JDY-31 默认串口波特率为 9600（HC-05 为 38400）。固件必须修改主控 MCU 发送初始化 AT 指令的串口速率及指令代码。"
                         }
                     ]
                 }

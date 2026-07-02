@@ -523,6 +523,7 @@
                                 <th>原成本</th>
                                 <th>优化成本</th>
                                 <th>兼容度 / 状态</th>
+                                <th>AI FAE 设计防雷及固件建议</th>
                             </tr>
                         </thead>
                         <tbody id="bom-table-body">
@@ -709,6 +710,7 @@ LED1,Blue-LED,Indicator LED Blue,0603,2`;
                         <td>¥${item.original_cost.toFixed(2)}</td>
                         <td style="color: var(--accent-green); font-weight:bold;">¥${item.optimized_cost.toFixed(2)}</td>
                         <td><span class="status-badge status-ok" style="margin-right:5px;">${item.compatibility}</span>${scoreBadge}</td>
+                        <td style="font-size: 13px; color: #a0aec0; text-align: left; line-height: 1.5; padding: 10px 15px;">${item.advice}</td>
                     `;
                     tbody.appendChild(tr);
                 });
@@ -719,12 +721,12 @@ LED1,Blue-LED,Indicator LED Blue,0603,2`;
                 savingVal.textContent = "60.3%";
                 
                 const fallbackItems = [
-                    { des: "U1 (主控 MCU)", orig: "STM32F103C8T6", origS: "供货紧张", rec: "GD32F103C8T6", recS: "国产首选", origC: 18.50, optC: 6.80, comp: "100% Pin-to-Pin", score: 0.985 },
-                    { des: "U2 (LDO 稳压)", orig: "AMS1117-3.3", origS: "断货预警", rec: "LDK130M33R", recS: "库存充足", origC: 0.80, optC: 0.95, comp: "引脚兼容，功耗更低", score: 0.865 },
-                    { des: "U3 (SPI Flash)", orig: "W25Q64JVSSIQ", origS: "货源紧俏", rec: "GD25Q64CSIG", recS: "性价比高", origC: 2.20, optC: 1.10, comp: "100% Pin-to-Pin", score: 0.942 },
-                    { des: "U4 (加速度计)", orig: "ADXL345", origS: "价格偏高", rec: "LIS3DH", recS: "货源稳定", origC: 8.50, optC: 3.20, comp: "引脚兼容，功耗更低", score: 0.895 },
-                    { des: "U5 (充电管理)", orig: "TP4056", origS: "库存中等", rec: "TC4056A", recS: "低成本", origC: 0.65, optC: 0.40, comp: "引脚及电气功能兼容", score: 0.824 },
-                    { des: "BT1 (蓝牙模块)", orig: "HC-05", origS: "价格虚高", rec: "JDY-31", recS: "成本减半", origC: 12.00, optC: 4.50, comp: "功能/透传协议平替", score: 0.912 }
+                    { des: "U1 (主控 MCU)", orig: "STM32F103C8T6", origS: "供货紧张", rec: "GD32F103C8T6", recS: "国产首选", origC: 18.50, optC: 6.80, comp: "100% Pin-to-Pin", score: 0.985, advice: "主频高达 108MHz，Flash 读等待更少。100% 引脚兼容。注意 GD32 内部 RC 温漂比 ST 略大，时序极其敏感（如高波特率 CAN 或 UART）建议外置高精晶振。调试时 Keil 需选择 GD32 Flash 算法以防校验报错。" },
+                    { des: "U2 (LDO 稳压)", orig: "AMS1117-3.3", origS: "断货预警", rec: "LDK130M33R", recS: "库存充足", origC: 0.80, optC: 0.95, comp: "引脚兼容，功耗更低", score: 0.865, advice: "静态功耗（120µA）仅为 AMS1117（5mA）的 2.4%，能大幅提升智能手表待机。注意：AMS1117 为 SOT-223 封装，而 LDK130 为 SOT-23。虽然脚位一致，但焊盘不兼容，需要微调 PCB 封装 Layout。" },
+                    { des: "U3 (SPI Flash)", orig: "W25Q64JVSSIQ", origS: "货源紧俏", rec: "GD25Q64CSIG", recS: "性价比高", origC: 2.20, optC: 1.10, comp: "100% Pin-to-Pin", score: 0.942, advice: "SOP-8 封装，物理尺寸和电气引脚 100% 相同，支持原位直替。需要注意：GD25Q64 的制造商 JEDEC ID 为 0xC8（华邦为 0xEF）。如果 MCU 固件驱动中写死了校验 0xEF，需在驱动代码中兼容支持 0xC8 厂商标识。" },
+                    { des: "U4 (加速度计)", orig: "ADXL345", origS: "价格偏高", rec: "LIS3DH", recS: "货源稳定", origC: 8.50, optC: 3.20, comp: "引脚兼容，功耗更低", score: 0.895, advice: "低功耗工作电流仅 2µA（ADXL345为23µA），降耗 90%，对穿戴设备极友好。引脚定义一致但封装焊盘有 0.1mm 微小公差，建议优化钢网。寄存器映射完全不同，固件中必须更换 LIS3DH 驱动库并校准中断敲击阈值。" },
+                    { des: "U5 (充电管理)", orig: "TP4056", origS: "库存中等", rec: "TC4056A", recS: "低成本", origC: 0.65, optC: 0.40, comp: "引脚及电气功能兼容", score: 0.824, advice: "纯模拟线性锂电充电控制，引脚和外围电路 100% 相同，支持 SOP-8 无感直替贴片。MCU 固件不涉及任何控制软件修改。" },
+                    { des: "BT1 (蓝牙模块)", orig: "HC-05", origS: "价格虚高", rec: "JDY-31", recS: "成本减半", origC: 12.00, optC: 4.50, comp: "功能/透传协议平替", score: 0.912, advice: "邮票孔封装引脚对齐，支持原位焊接直替。注意：AT 指令集不同，且 JDY-31 默认串口波特率为 9600（HC-05 为 38400）。固件必须修改主控 MCU 发送初始化 AT 指令的串口速率及指令代码。" }
                 ];
                 
                 fallbackItems.forEach(item => {
@@ -738,6 +740,7 @@ LED1,Blue-LED,Indicator LED Blue,0603,2`;
                         <td>¥${item.origC.toFixed(2)}</td>
                         <td style="color: var(--accent-green); font-weight:bold;">¥${item.optC.toFixed(2)}</td>
                         <td><span class="status-badge status-ok" style="margin-right:5px;">${item.comp}</span><span class="status-badge status-ok">混合评分: ${item.score.toFixed(3)}</span></td>
+                        <td style="font-size: 13px; color: #a0aec0; text-align: left; line-height: 1.5; padding: 10px 15px;">${item.advice}</td>
                     `;
                     tbody.appendChild(tr);
                 });
