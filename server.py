@@ -27,6 +27,36 @@ CHIP_DATABASE = [
         "features": ["sot-23", "ldo", "regulator", "3.3v"]
     },
     {
+        "name": "GD25Q64CSIG",
+        "description": "8MB SPI Serial Flash memory, 120MHz, SOP-8 package, 2.7-3.6V, high-performance NOR flash, replacement for Winbond W25Q64.",
+        "category": "Flash",
+        "price": 1.10,
+        "stock": "充足",
+        "status_badge": "性价比高",
+        "compatibility": "100% Pin-to-Pin",
+        "features": ["sop-8", "flash", "spi", "3.3v"]
+    },
+    {
+        "name": "LIS3DH",
+        "description": "3-Axis ultra-low-power digital accelerometer, LGA-16 package, I2C/SPI digital output, pin compatible with ADXL345.",
+        "category": "Sensor",
+        "price": 3.20,
+        "stock": "充足",
+        "status_badge": "货源稳定",
+        "compatibility": "引脚兼容，功耗更低",
+        "features": ["lga-16", "accelerometer", "sensor", "i2c"]
+    },
+    {
+        "name": "TC4056A",
+        "description": "1A Standalone linear Li-Po battery charger management chip, SOP-8 package, thermal regulation, replacement for TP4056.",
+        "category": "Charger",
+        "price": 0.40,
+        "stock": "充足",
+        "status_badge": "低成本",
+        "compatibility": "引脚及电气功能兼容",
+        "features": ["sop-8", "charger", "battery", "linear"]
+    },
+    {
         "name": "JDY-31",
         "description": "Bluetooth serial port pass-through module, Bluetooth 3.0 SPP, SMD-6 package, replacement for HC-05 classic bluetooth transparent transmission.",
         "category": "Bluetooth",
@@ -143,6 +173,9 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                 # 提取关键芯片并用本地混合检索库匹配
                 mcu_match = search_hybrid("ARM Cortex-M3 MCU 3.3V in LQFP48 package compatible with STM32F103", ["lqfp48", "3.3v", "mcu"])[0]
                 ldo_match = search_hybrid("3.3V output LDO regulator SOT-23 package", ["sot-23", "ldo", "3.3v"])[0]
+                flash_match = search_hybrid("SPI serial flash memory 8MB SOP-8 package compatible with W25Q64", ["sop-8", "flash", "spi"])[0]
+                accel_match = search_hybrid("3-axis digital accelerometer sensor LGA-16 package compatible with ADXL345", ["lga-16", "accelerometer", "sensor"])[0]
+                charger_match = search_hybrid("Li-Po battery charger SOP-8 package compatible with TP4056", ["sop-8", "charger", "battery"])[0]
                 bt_match = search_hybrid("Bluetooth SPP serial pass-through module replacing HC-05", ["smd-6", "bluetooth", "hc-05"])[0]
                 
                 # 双通道匹配完毕后，真实调用 AI 联网搜索，更新为最新的实时价格和库存信息
@@ -152,12 +185,21 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                 orig_ldo_price, orig_ldo_stock = get_realtime_price_and_stock("AMS1117-3.3", 0.80, "断货预警")
                 opt_ldo_price, opt_ldo_stock = get_realtime_price_and_stock(ldo_match["chip"]["name"], ldo_match["chip"]["price"], ldo_match["chip"]["status_badge"])
                 
+                orig_flash_price, orig_flash_stock = get_realtime_price_and_stock("W25Q64JVSSIQ", 2.20, "货源紧俏")
+                opt_flash_price, opt_flash_stock = get_realtime_price_and_stock(flash_match["chip"]["name"], flash_match["chip"]["price"], flash_match["chip"]["status_badge"])
+
+                orig_accel_price, orig_accel_stock = get_realtime_price_and_stock("ADXL345", 8.50, "价格偏高")
+                opt_accel_price, opt_accel_stock = get_realtime_price_and_stock(accel_match["chip"]["name"], accel_match["chip"]["price"], accel_match["chip"]["status_badge"])
+
+                orig_charger_price, orig_charger_stock = get_realtime_price_and_stock("TP4056", 0.65, "库存中等")
+                opt_charger_price, opt_charger_stock = get_realtime_price_and_stock(charger_match["chip"]["name"], charger_match["chip"]["price"], charger_match["chip"]["status_badge"])
+
                 orig_bt_price, orig_bt_stock = get_realtime_price_and_stock("HC-05", 12.00, "价格虚高")
                 opt_bt_price, opt_bt_stock = get_realtime_price_and_stock(bt_match["chip"]["name"], bt_match["chip"]["price"], bt_match["chip"]["status_badge"])
                 
                 # 动态计算总价
-                original_total_cost = orig_mcu_price + orig_ldo_price + orig_bt_price
-                optimized_total_cost = opt_mcu_price + opt_ldo_price + opt_bt_price
+                original_total_cost = orig_mcu_price + orig_ldo_price + orig_flash_price + orig_accel_price + orig_charger_price + orig_bt_price
+                optimized_total_cost = opt_mcu_price + opt_ldo_price + opt_flash_price + opt_accel_price + opt_charger_price + opt_bt_price
                 saving_rate = f"{round((1 - optimized_total_cost / original_total_cost) * 100, 1)}%"
                 
                 # 构建最终真实的融合决策数据
@@ -191,6 +233,45 @@ class HybridSearchHandler(BaseHTTPRequestHandler):
                             "score": ldo_match["score"],
                             "vector_score": ldo_match["vector_score"],
                             "keyword_score": ldo_match["keyword_score"]
+                        },
+                        {
+                            "designator": "U3 (SPI Flash)",
+                            "original_model": "W25Q64JVSSIQ",
+                            "original_status": orig_flash_stock,
+                            "recommend_model": flash_match["chip"]["name"],
+                            "recommend_status": opt_flash_stock,
+                            "original_cost": orig_flash_price,
+                            "optimized_cost": opt_flash_price,
+                            "compatibility": flash_match["chip"]["compatibility"],
+                            "score": flash_match["score"],
+                            "vector_score": flash_match["vector_score"],
+                            "keyword_score": flash_match["keyword_score"]
+                        },
+                        {
+                            "designator": "U4 (加速度计)",
+                            "original_model": "ADXL345",
+                            "original_status": orig_accel_stock,
+                            "recommend_model": accel_match["chip"]["name"],
+                            "recommend_status": opt_accel_stock,
+                            "original_cost": orig_accel_price,
+                            "optimized_cost": opt_accel_price,
+                            "compatibility": accel_match["chip"]["compatibility"],
+                            "score": accel_match["score"],
+                            "vector_score": accel_match["vector_score"],
+                            "keyword_score": accel_match["keyword_score"]
+                        },
+                        {
+                            "designator": "U5 (充电管理)",
+                            "original_model": "TP4056",
+                            "original_status": orig_charger_stock,
+                            "recommend_model": charger_match["chip"]["name"],
+                            "recommend_status": opt_charger_stock,
+                            "original_cost": orig_charger_price,
+                            "optimized_cost": opt_charger_price,
+                            "compatibility": charger_match["chip"]["compatibility"],
+                            "score": charger_match["score"],
+                            "vector_score": charger_match["vector_score"],
+                            "keyword_score": charger_match["keyword_score"]
                         },
                         {
                             "designator": "BT1 (蓝牙模块)",
