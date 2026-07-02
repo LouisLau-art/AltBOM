@@ -459,6 +459,27 @@
             position: relative;
             box-shadow: 0 0 15px var(--glow-color);
         }
+        .glow-btn-alt {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #e2e8f0;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 13px;
+            transition: all 0.2s;
+            outline: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .glow-btn-alt:hover {
+            background: rgba(0, 242, 254, 0.15);
+            border-color: var(--accent-cyan);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(0, 242, 254, 0.2);
+        }
     </style>
 </head>
 <body>
@@ -513,6 +534,10 @@
 
             <div style="background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px; padding: 20px; backdrop-filter: blur(16px);">
                 <h3 style="font-size: 16px; color: var(--accent-blue); margin-bottom: 15px;">智能平替比对清单</h3>
+                <div class="action-buttons-group" style="margin-bottom: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button id="export-csv-btn" class="glow-btn-alt">📥 导出优化后采购 BOM (CSV)</button>
+                    <button id="export-report-btn" class="glow-btn-alt">📄 导出技术变更与 FAE 指南 (HTML)</button>
+                </div>
                 <div style="overflow-x: auto; width: 100%;">
                     <table class="bom-table">
                         <thead>
@@ -680,8 +705,23 @@ LED1,Blue-LED,Indicator LED Blue,0603,2`;
             handleFileLoaded('Smart_Watch_BOM_v1.0.csv', 4915);
         });
 
+        let lastAnalyzedItems = [];
+
         // 动态表格与指标渲染函数
         function renderResults(backendData) {
+            lastAnalyzedItems = backendData ? backendData.items : [
+                { des: "U1 (主控 MCU)", orig: "STM32F103C8T6", origS: "供货紧张", rec: "GD32F103C8T6", recS: "国产首选", origC: 18.50, optC: 6.80, comp: "100% Pin-to-Pin", score: 0.985, advice: "主频高达 108MHz，Flash 读等待更少。100% 引脚兼容。注意 GD32 内部 RC 温漂比 ST 略大，时序极其敏感（如高波特率 CAN 或 UART）建议外置高精晶振。调试时 Keil 需选择 GD32 Flash 算法以防校验报错。" },
+                { des: "U2 (LDO 稳压)", orig: "AMS1117-3.3", origS: "断货预警", rec: "LDK130M33R", recS: "库存充足", origC: 0.80, optC: 0.95, comp: "引脚兼容，功耗更低", score: 0.865, advice: "静态功耗（120µA）仅为 AMS1117（5mA）的 2.4%，能大幅提升智能手表待机。注意：AMS1117 为 SOT-223 封装，而 LDK130 为 SOT-23。虽然脚位一致，但焊盘不兼容，需要微调 PCB 封装 Layout。" },
+                { des: "U3 (SPI Flash)", orig: "W25Q64JVSSIQ", origS: "货源紧俏", rec: "GD25Q64CSIG", recS: "性价比高", origC: 2.20, optC: 1.10, comp: "100% Pin-to-Pin", score: 0.942, advice: "SOP-8 封装，物理尺寸和电气引脚 100% 相同，支持原位直替。需要注意：GD25Q64 的制造商 JEDEC ID 为 0xC8（华邦为 0xEF）。如果 MCU 固件驱动中写死了校验 0xEF，需在驱动代码中兼容支持 0xC8 厂商标识。" },
+                { des: "U4 (加速度计)", orig: "ADXL345", origS: "价格偏高", rec: "LIS3DH", recS: "货源稳定", origC: 8.50, optC: 3.20, comp: "引脚兼容，功耗更低", score: 0.895, advice: "低功耗工作电流仅 2µA（ADXL345为23µA），降耗 90%，对穿戴设备极友好。引脚定义一致但封装焊盘有 0.1mm 微小公差，建议优化钢网。寄存器映射完全不同，固件中必须更换 LIS3DH 驱动库并校准中断敲击阈值。" },
+                { des: "U5 (充电管理)", orig: "TP4056", origS: "库存中等", rec: "TC4056A", recS: "低成本", origC: 0.65, optC: 0.40, comp: "引脚及电气功能兼容", score: 0.824, advice: "纯模拟线性锂电充电控制，引脚和外围电路 100% 相同，支持 SOP-8 无感直替贴片。MCU 固件不涉及任何控制软件修改。" },
+                { des: "BT1 (蓝牙模块)", orig: "HC-05", origS: "价格虚高", rec: "JDY-31", recS: "成本减半", origC: 12.00, optC: 4.50, comp: "功能/透传协议平替", score: 0.912, advice: "邮票孔封装引脚对齐，支持原位焊接直替。注意：AT 指令集不同，且 JDY-31 默认串口波特率为 9600（HC-05 为 38400）。固件必须修改主控 MCU 发送初始化 AT 指令的串口速率及指令代码。" }
+            ];
+
+            if (backendData) {
+                lastAnalyzedItems = backendData.items;
+            }
+
             const originalVal = document.querySelector('.metrics-container .metric-card:nth-child(1) .metric-value');
             const optimizedVal = document.querySelector('.metrics-container .metric-card:nth-child(2) .metric-value');
             const savingVal = document.querySelector('.metrics-container .metric-card:nth-child(3) .metric-value');
@@ -806,8 +846,185 @@ LED1,Blue-LED,Indicator LED Blue,0603,2`;
                         rightPanel.scrollIntoView({ behavior: 'smooth' });
                     }
                 }, item.time);
-                activeTimers.push(timerId);
             });
+        });
+
+        // ----------------- CSV & HTML Export Logic -----------------
+        const exportCsvBtn = document.getElementById('export-csv-btn');
+        const exportReportBtn = document.getElementById('export-report-btn');
+
+        exportCsvBtn.addEventListener('click', () => {
+            if (!lastAnalyzedItems || lastAnalyzedItems.length === 0) {
+                alert('请先加载并分析 BOM 文件后再导出！');
+                return;
+            }
+
+            // 提取平替映射表
+            const replacementMap = {};
+            lastAnalyzedItems.forEach(item => {
+                const recModel = item.recommend_model || item.rec;
+                const des = item.designator || item.des;
+                const desCode = des.split(' ')[0]; // U1, U2 etc.
+                replacementMap[desCode] = recModel;
+            });
+
+            // 原始 BOM 静态表数据包，用于平替后和未改动的电阻电容合并生成完整采购 BOM
+            const baseBomList = [
+                { des: "U1", model: "STM32F103C8T6", desc: "ARM Cortex-M3 MCU 64KB Flash 72MHz", pkg: "LQFP-48", qty: 1 },
+                { des: "U2", model: "AMS1117-3.3", desc: "LDO Voltage Regulator 3.3V 1A", pkg: "SOT-223", qty: 1 },
+                { des: "U3", model: "W25Q64JVSSIQ", desc: "8MB SPI Serial Flash Memory", pkg: "SOP-8", qty: 1 },
+                { des: "U4", model: "ADXL345", desc: "3-Axis Digital Accelerometer Sensor", pkg: "LGA-16", qty: 1 },
+                { des: "U5", model: "TP4056", desc: "1A Standalone Linear Li-Po Battery Charger", pkg: "SOP-8", qty: 1 },
+                { des: "BT1", model: "HC-05", desc: "Bluetooth Serial Pass-through Module", pkg: "SMD-6", qty: 1 },
+                { des: "R1", model: "10K", desc: "Resistor 10k Ohm 1/10W 5%", pkg: "0603", qty: 6 },
+                { des: "R2", model: "1K", desc: "Resistor 1k Ohm 1/10W 5%", pkg: "0603", qty: 4 },
+                { des: "C1", model: "10uF", desc: "Ceramic Capacitor 10uF 16V", pkg: "0603", qty: 4 },
+                { des: "C2", model: "100nF", desc: "Ceramic Capacitor 0.1uF 50V", pkg: "0603", qty: 8 },
+                { des: "Y1", model: "8MHz", desc: "Quartz Crystal Oscillator Resonator", pkg: "SMD-3225", qty: 1 },
+                { des: "LED1", model: "Blue-LED", desc: "Indicator LED Blue", pkg: "0603", qty: 2 }
+            ];
+
+            const adviceDescriptions = {
+                "GD32F103C8T6": "ARM Cortex-M3 MCU 64KB Flash 108MHz (AI 推荐平替)",
+                "LDK130M33R": "LDO Voltage Regulator 3.3V 300mA Low Leakage (AI 推荐平替)",
+                "GD25Q64CSIG": "8MB SPI Serial NOR Flash Memory (AI 推荐平替)",
+                "LIS3DH": "3-Axis Digital Accelerometer Low Power (AI 推荐平替)",
+                "TC4056A": "1A Standalone Linear Charger SOP-8 (AI 推荐平替)",
+                "JDY-31": "Bluetooth 3.0 SPP Serial Module (AI 推荐平替)"
+            };
+
+            let csvData = "\ufeff位号(Designator),器件型号(Part Number),描述(Description),封装(Package),数量(Quantity)\r\n";
+            baseBomList.forEach(line => {
+                let model = line.model;
+                let desc = line.desc;
+                if (replacementMap[line.des]) {
+                    model = replacementMap[line.des];
+                    desc = adviceDescriptions[model] || (model + " (AI 推荐平替)");
+                }
+                csvData += `${line.des},${model},${desc},${line.pkg},${line.qty}\r\n`;
+            });
+
+            const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", "Optimized_Smart_Watch_BOM.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        exportReportBtn.addEventListener('click', () => {
+            if (!lastAnalyzedItems || lastAnalyzedItems.length === 0) {
+                alert('请先加载并分析 BOM 文件后再导出！');
+                return;
+            }
+
+            const originalVal = document.querySelector('.metrics-container .metric-card:nth-child(1) .metric-value').textContent;
+            const optimizedVal = document.querySelector('.metrics-container .metric-card:nth-child(2) .metric-value').textContent;
+            const savingVal = document.querySelector('.metrics-container .metric-card:nth-child(3) .metric-value').textContent;
+
+            let rows = '';
+            lastAnalyzedItems.forEach(item => {
+                const des = item.designator || item.des;
+                const orig = item.original_model || item.orig;
+                const rec = item.recommend_model || item.rec;
+                const origC = item.original_cost || item.origC;
+                const optC = item.optimized_cost || item.optC;
+                const comp = item.compatibility || item.comp;
+                const advice = item.advice;
+
+                rows += `
+                    <tr style="border-bottom: 1px solid #eee; text-align: left;">
+                        <td style="padding: 12px; font-weight: bold; color: #2c3e50;">${des}</td>
+                        <td style="padding: 12px; color: #7f8c8d;">${orig}</td>
+                        <td style="padding: 12px; color: #2c3e50; font-weight: bold;">${rec}</td>
+                        <td style="padding: 12px; color: #7f8c8d;">¥${origC.toFixed(2)}</td>
+                        <td style="padding: 12px; color: #27ae60; font-weight: bold;">¥${optC.toFixed(2)}</td>
+                        <td style="padding: 12px;"><span style="background: #e8f8f5; color: #1abc9c; padding: 3px 8px; border-radius: 4px; font-size: 12px;">${comp}</span></td>
+                        <td style="padding: 12px; font-size: 13px; color: #555; line-height: 1.5;">${advice}</td>
+                    </tr>
+                `;
+            });
+
+            const reportHtml = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>AltBOM 降本与技术变更评估报告 (ECN)</title>
+</head>
+<body style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; color: #333; background: #f4f6f9; line-height: 1.6;">
+    <div style="max-width: 1100px; margin: 0 auto; background: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e1e8ed;">
+        
+        <!-- Header -->
+        <div style="border-bottom: 3px solid #3498db; padding-bottom: 20px; margin-bottom: 35px; display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h1 style="margin: 0; color: #2c3e50; font-size: 26px;">AltBOM 降本与技术变更评估报告 (ECN)</h1>
+                <p style="margin: 6px 0 0 0; color: #7f8c8d; font-size: 14px;">由 AI 混合检索与 FAE 专家引擎自动评估生成</p>
+            </div>
+            <div style="text-align: right;">
+                <span style="background: #e74c3c; color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: bold; letter-spacing: 1px;">机密文档</span>
+            </div>
+        </div>
+
+        <!-- Metrics Summary -->
+        <div style="display: flex; gap: 20px; margin-bottom: 35px;">
+            <div style="flex: 1; background: #f8f9fa; padding: 22px; border-radius: 8px; border-top: 4px solid #95a5a6; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                <div style="font-size: 13px; color: #7f8c8d; font-weight: 500;">原 BOM 核心器件总成本</div>
+                <div style="font-size: 26px; font-weight: 800; color: #2c3e50; margin-top: 8px;">${originalVal}</div>
+            </div>
+            <div style="flex: 1; background: #f8f9fa; padding: 22px; border-radius: 8px; border-top: 4px solid #3498db; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                <div style="font-size: 13px; color: #7f8c8d; font-weight: 500;">AI 优化后核心器件总成本</div>
+                <div style="font-size: 26px; font-weight: 800; color: #3498db; margin-top: 8px;">${optimizedVal}</div>
+            </div>
+            <div style="flex: 1; background: #ebf5fb; padding: 22px; border-radius: 8px; border-top: 4px solid #2ecc71; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.02);">
+                <div style="font-size: 13px; color: #2980b9; font-weight: 500;">整板可降本比例</div>
+                <div style="font-size: 26px; font-weight: 800; color: #2ecc71; margin-top: 8px;">${savingVal}</div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <h2 style="font-size: 18px; color: #2c3e50; margin-bottom: 18px; border-left: 5px solid #3498db; padding-left: 12px; font-weight: 700;">优化平替细节评估比对表</h2>
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 40px; font-size: 14px;">
+            <thead>
+                <tr style="background: #f8f9fa; border-bottom: 2px solid #e1e8ed; text-align: left;">
+                    <th style="padding: 14px 12px; color: #34495e;">位号/品类</th>
+                    <th style="padding: 14px 12px; color: #34495e;">原器件型号</th>
+                    <th style="padding: 14px 12px; color: #34495e;">AI推荐平替</th>
+                    <th style="padding: 14px 12px; color: #34495e;">原成本</th>
+                    <th style="padding: 14px 12px; color: #34495e;">优化成本</th>
+                    <th style="padding: 14px 12px; color: #34495e;">兼容度</th>
+                    <th style="padding: 14px 12px; color: #34495e;">AI FAE 防雷与固件建议</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>
+
+        <!-- Actions Guidance -->
+        <div style="background: #fffdf9; border: 1px dashed #f39c12; padding: 25px; border-radius: 8px; font-size: 14px; color: #2c3e50; box-shadow: inset 0 0 10px rgba(243,156,18,0.02);">
+            <strong style="color: #d35400; font-size: 15px; display: flex; align-items: center; gap: 6px;">📌 团队对接工作流执行指南 (ECN Instructions)：</strong>
+            <ol style="margin: 12px 0 0 0; padding-left: 20px; line-height: 2.0; color: #34495e;">
+                <li><strong>采购部 (Procurement)</strong>：直接将随同生成的全新优化后 <code>BOM (CSV)</code> 发送给元器件商城（或导入公司 ERP）进行采购下订。</li>
+                <li><strong>硬件开发组 (EE Hardware)</strong>：根据 <code>U2 (AMS1117)</code> 避坑指南，务必在下一次 PCB 改板改线时将焊盘更改为 SOT-23 封装规格。</li>
+                <li><strong>固件软件组 (Firmware Dev)</strong>：根据 <code>U3 (Winbond Flash)</code> 和 <code>BT1 (HC-05)</code> 参数指引，请在驱动代码中兼容 0xC8 厂商 ID，并将初始化波特率适配为 9600 对应 JDY-31 蓝牙模块。</li>
+            </ol>
+        </div>
+
+        <div style="text-align: center; margin-top: 50px; font-size: 12px; color: #95a5a6; border-top: 1px solid #eee; padding-top: 20px;">
+            报告生成时间: ${new Date().toLocaleString()} | 系统支持: AltBOM Smart Radar
+        </div>
+    </div>
+</body>
+</html>`;
+
+            const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute("download", "AltBOM_Technical_ECN_Report.html");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
         });
     </script>
 </body>
